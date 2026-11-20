@@ -7,11 +7,12 @@ import { toast } from 'sonner';
 
 import { Milestone, Project } from '@/types';
 import { ImageLightboxModal } from '@/components/ImageLightboxModal';
-import { DeliverableItem, DeliverablePreview, normalizeDeliverables } from '@/components/DeliverablePreview';
-import { MilestoneProgressBar } from '@/components/MilestoneProgressBar';
 import { ProjectDetailSkeleton } from '@/components/skeletons';
+import { ProjectAuditLog } from '@/components/ProjectAuditLog';
+import { CalendarExportButton } from '@/components/CalendarExportButton';
 import { useWalletStore } from '@/store/walletStore';
 import { authFetch } from '@/lib/api';
+import { CryptoId } from '@/components/ui/CryptoId';
 import { SUPPORTED_TOKENS } from '@/config/tokens';
 import {
   createProjectOnChain,
@@ -37,10 +38,7 @@ export default function ProjectDetailsPage() {
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
-  const [lightboxState, setLightboxState] = useState<{
-    items: DeliverableItem[];
-    index: number;
-  } | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; name?: string } | null>(null);
 
   // Active Transaction State for on-chain feedback
   const [txState, setTxState] = useState<{
@@ -677,6 +675,8 @@ export default function ProjectDetailsPage() {
             >
               {project.status.replace('_', ' ')}
             </span>
+
+            <CalendarExportButton project={project} />
           </div>
         </div>
 
@@ -714,31 +714,44 @@ export default function ProjectDetailsPage() {
           <div className="mt-6 pt-6 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
             <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
               <span className="text-slate-400 block mb-0.5">👤 Client Wallet</span>
-              <span className="font-mono text-slate-200 truncate block">
-                {project.client_address
-                  ? `${project.client_address.slice(0, 8)}...${project.client_address.slice(-6)}`
-                  : 'Unassigned'}
-              </span>
+              {project.client_address ? (
+                <CryptoId
+                  value={project.client_address}
+                  head={8}
+                  tail={6}
+                  className="text-slate-200 truncate block"
+                />
+              ) : (
+                <span className="text-slate-200 truncate block">Unassigned</span>
+              )}
             </div>
 
             <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
               <span className="text-slate-400 block mb-0.5">🛠️ Freelancer Wallet</span>
-              <span className="font-mono text-slate-200 truncate block">
-                {project.freelancer_address
-                  ? `${project.freelancer_address.slice(0, 8)}...${project.freelancer_address.slice(-6)}`
-                  : 'Pending Assignment'}
-              </span>
+              {project.freelancer_address ? (
+                <CryptoId
+                  value={project.freelancer_address}
+                  head={8}
+                  tail={6}
+                  className="text-slate-200 truncate block"
+                />
+              ) : (
+                <span className="text-slate-200 truncate block">Pending Assignment</span>
+              )}
             </div>
 
             <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
               <span className="text-slate-400 block mb-0.5">⚖️ Designated Arbiter</span>
-              <span className="font-mono text-slate-200 truncate block">
-                {project.arbiter_address
-                  ? `${project.arbiter_address.slice(0, 8)}...${project.arbiter_address.slice(-6)}`
-                  : `${DEFAULT_ARBITER_ADDRESS.slice(0, 8)}...${DEFAULT_ARBITER_ADDRESS.slice(-6)}`}
-              </span>
+              <CryptoId
+                value={project.arbiter_address || DEFAULT_ARBITER_ADDRESS}
+                head={8}
+                tail={6}
+                className="text-slate-200 truncate block"
+              />
             </div>
           </div>
+
+          <ProjectAuditLog project={project} />
 
           {/* On-Chain Deposit Callout if project has not been locked on-chain yet */}
           {!hasOnChainEscrow && isClient && (
@@ -795,24 +808,52 @@ export default function ProjectDetailsPage() {
           )}
 
           {/* Attached Files Section */}
-          {((project.attachments && project.attachments.length > 0) || (project.files && project.files.length > 0)) && (() => {
-            const deliverableItems = normalizeDeliverables(project.files || project.attachments || []);
-            return deliverableItems.length > 0 ? (
-              <div className="mt-6 pt-6 border-t border-slate-800">
-                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <svg className="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                  </svg>
-                  Project Files &amp; Attachments
-                </h3>
-                <DeliverablePreview
-                  items={deliverableItems}
-                  size="md"
-                  onInspect={(idx) => setLightboxState({ items: deliverableItems, index: idx })}
-                />
+          {((project.attachments && project.attachments.length > 0) || (project.files && project.files.length > 0)) && (
+            <div className="mt-6 pt-6 border-t border-slate-800">
+              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <svg className="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                </svg>
+                Project Files & Attachments
+              </h3>
+              <div className="flex flex-wrap items-center gap-3">
+                {(project.files || project.attachments || []).map((file: any, fIdx: number) => {
+                  const fileUrl = typeof file === 'string' ? file : (file.file_url || file.url || file.file_name || file.name);
+                  const fileName = typeof file === 'string' ? file : (file.file_name || file.name || 'Attachment');
+                  const isImage = typeof fileUrl === 'string' && (fileUrl.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i) || fileUrl.startsWith('data:image'));
+
+                  if (isImage) {
+                    return (
+                      <div
+                        key={fIdx}
+                        onClick={() => setLightboxImage({ url: fileUrl, name: fileName })}
+                        className="relative group/img cursor-pointer overflow-hidden rounded-xl border border-slate-800 hover:border-indigo-500 transition-all shadow-md bg-slate-900"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={fileUrl} alt={fileName} className="w-20 h-20 object-cover transform group-hover/img:scale-110 transition-transform duration-200" />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-opacity">
+                          🔍 View
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <a
+                      key={fIdx}
+                      href={fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs bg-slate-900 hover:bg-slate-800 text-slate-200 px-3.5 py-2.5 rounded-xl border border-slate-800 font-mono flex items-center gap-2 transition-colors"
+                    >
+                      <span>📄</span>
+                      <span className="truncate max-w-[200px]">{fileName}</span>
+                    </a>
+                  );
+                })}
               </div>
-            ) : null;
-          })()}
+            </div>
+          )}
         </div>
 
         {/* Milestones Section */}
@@ -835,17 +876,6 @@ export default function ProjectDetailsPage() {
               </Button>
             )}
           </div>
-
-          {/* Animated Milestone Progress Bar */}
-          {project.milestones && project.milestones.length > 0 && (
-            <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-2xl p-5 shadow-xl">
-              <MilestoneProgressBar
-                milestones={project.milestones}
-                totalBudget={project.budget}
-                token={tokenSymbol}
-              />
-            </div>
-          )}
 
           {!project.milestones || project.milestones.length === 0 ? (
             <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-10 text-center flex flex-col items-center justify-center">
@@ -905,14 +935,14 @@ export default function ProjectDetailsPage() {
                       {m.description && <p className="text-sm text-slate-400 pl-10">{m.description}</p>}
 
                       {m.deliverable_hash && (
-                        <div className="pl-10 pt-1 text-xs text-indigo-300 flex items-center gap-2 flex-wrap font-mono">
-                          <span className="text-slate-500 font-sans font-medium">Deliverable Hash:</span>
-                          <span
-                            className="bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 truncate max-w-sm text-[11px]"
+                        <div className="pl-10 pt-1 text-xs text-indigo-300 flex items-center gap-2 flex-wrap">
+                          <span className="text-slate-500 font-medium">Deliverable Hash:</span>
+                          <CryptoId
+                            value={m.deliverable_hash}
+                            prefix="🔒 "
                             title={m.deliverable_hash}
-                          >
-                            🔒 {m.deliverable_hash}
-                          </span>
+                            className="bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 truncate max-w-sm"
+                          />
                         </div>
                       )}
 
@@ -1072,7 +1102,7 @@ export default function ProjectDetailsPage() {
                   value={deliverableHash}
                   onChange={(e) => setDeliverableHash(e.target.value)}
                   placeholder="bafybeic... or sha256 hex (auto-generated if left blank)"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 font-mono tracking-tight text-xs focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
@@ -1197,11 +1227,16 @@ export default function ProjectDetailsPage() {
               </div>
               <div className="flex justify-between text-slate-300">
                 <span>Recipient Freelancer:</span>
-                <span className="font-mono text-slate-400">
-                  {project.freelancer_address
-                    ? `${project.freelancer_address.slice(0, 8)}...${project.freelancer_address.slice(-6)}`
-                    : 'Designated Freelancer'}
-                </span>
+                {project.freelancer_address ? (
+                  <CryptoId
+                    value={project.freelancer_address}
+                    head={8}
+                    tail={6}
+                    className="text-slate-400"
+                  />
+                ) : (
+                  <span className="text-slate-400">Designated Freelancer</span>
+                )}
               </div>
             </div>
 
@@ -1244,14 +1279,18 @@ export default function ProjectDetailsPage() {
                   value={fundFreelancerAddress}
                   onChange={(e) => setFundFreelancerAddress(e.target.value)}
                   placeholder="G..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 font-mono focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 font-mono tracking-tight text-sm focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
               <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5 text-slate-400">
                 <div className="flex justify-between">
                   <span>Contract Target:</span>
-                  <span className="font-mono text-indigo-300 text-[11px] truncate max-w-[200px]">{DEFAULT_ESCROW_CONTRACT_ID}</span>
+                  <CryptoId
+                    value={DEFAULT_ESCROW_CONTRACT_ID}
+                    title={DEFAULT_ESCROW_CONTRACT_ID}
+                    className="text-indigo-300 truncate max-w-[200px]"
+                  />
                 </div>
                 <div className="flex justify-between">
                   <span>Total Escrow Deposit:</span>
@@ -1419,9 +1458,9 @@ export default function ProjectDetailsPage() {
                 href={getStellarExplorerUrl(txState.txHash, 'tx')}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-indigo-400 hover:text-indigo-300 underline font-mono block pt-1"
+                className="text-xs text-indigo-400 hover:text-indigo-300 underline block pt-1"
               >
-                View on Stellar.Expert ({txState.txHash.slice(0, 8)}...) ↗
+                View on Stellar.Expert (<CryptoId value={txState.txHash} head={8} tail={0} />) ↗
               </a>
             )}
 
@@ -1437,11 +1476,11 @@ export default function ProjectDetailsPage() {
         </div>
       )}
 
-      {lightboxState && (
+      {lightboxImage && (
         <ImageLightboxModal
-          items={lightboxState.items}
-          initialIndex={lightboxState.index}
-          onClose={() => setLightboxState(null)}
+          imageUrl={lightboxImage.url}
+          imageAlt={lightboxImage.name}
+          onClose={() => setLightboxImage(null)}
         />
       )}
     </div>

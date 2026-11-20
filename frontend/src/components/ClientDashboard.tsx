@@ -8,14 +8,15 @@ import { authFetch } from '@/lib/api';
 
 import { Milestone, Project, Applicant } from '@/types';
 import { ImageLightboxModal } from './ImageLightboxModal';
-import { DeliverableItem, DeliverablePreview, normalizeDeliverables } from './DeliverablePreview';
-import { MilestoneProgressBar } from './MilestoneProgressBar';
-import { TestnetFaucetModal } from './TestnetFaucetModal';
-import { fetchAccountBalances, isTestnetNetwork } from '@/lib/friendbot';
 import { ApplicantCard } from './ApplicantCard';
 import { ProjectChatModal } from './ProjectChatModal';
 import { ProjectCardSkeletonList } from '@/components/skeletons';
 import { SUPPORTED_TOKENS } from '@/config/tokens';
+import { useTokenBalance, getBalanceShortfall } from '@/hooks/useCreateProjectForm';
+import { BalanceWarningBadge } from '@/components/BalanceWarningBadge';
+import { ProjectAuditLog } from '@/components/ProjectAuditLog';
+import { CalendarExportButton } from '@/components/CalendarExportButton';
+import { DownloadReceiptButton } from '@/components/DownloadReceiptButton';
 import {
   createProjectOnChain,
   lockEscrowOnChain,
@@ -30,14 +31,10 @@ export interface ClientDashboardProps {
 
 export function ClientDashboard({ defaultTab = 'projects' }: ClientDashboardProps) {
   const router = useRouter();
-  const { address, xlmBalance, usdcBalance, isLowBalance, setBalances } = useWalletStore();
+  const { address } = useWalletStore();
   const [activeTab, setActiveTab] = useState<'projects' | 'create' | 'applicants'>(defaultTab);
   const [loading, setLoading] = useState(true);
-  const [showFaucetModal, setShowFaucetModal] = useState(false);
-  const [lightboxState, setLightboxState] = useState<{
-    items: DeliverableItem[];
-    index: number;
-  } | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; name?: string } | null>(null);
 
   // Chat Modal State
   const [chatModalState, setChatModalState] = useState<{
@@ -66,6 +63,7 @@ export function ClientDashboard({ defaultTab = 'projects' }: ClientDashboardProp
 
   // Selected project for Applicants view
   const [selectedProjectForApplicants, setSelectedProjectForApplicants] = useState<Project | null>(null);
+  const [auditProject, setAuditProject] = useState<Project | null>(null);
 
   // Create Project Form State
   const [formTitle, setFormTitle] = useState('');
@@ -82,6 +80,9 @@ export function ClientDashboard({ defaultTab = 'projects' }: ClientDashboardProp
   const [formFreelancerAddress, setFormFreelancerAddress] = useState('');
   const [formLockImmediately, setFormLockImmediately] = useState(false);
   const [fundingTxMessage, setFundingTxMessage] = useState('');
+  const walletBalance = useTokenBalance(address, formToken);
+  const balanceShortfall = getBalanceShortfall(walletBalance.balance, formBudget === '' ? 0 : formBudget);
+  const hasInsufficientBalance = walletBalance.balance !== null && balanceShortfall > 0;
   
   // Today's date string for restricting date pickers to current or future dates
   const todayStr = new Date().toISOString().split('T')[0];
@@ -192,15 +193,6 @@ export function ClientDashboard({ defaultTab = 'projects' }: ClientDashboardProp
   useEffect(() => {
     fetchBackendProjects();
   }, [address]);
-
-  useEffect(() => {
-    if (!address || !isTestnetNetwork()) return;
-    fetchAccountBalances(address)
-      .then((res) => {
-        setBalances(res.xlmBalance, res.usdcBalance);
-      })
-      .catch(() => {});
-  }, [address, setBalances]);
 
   // Add Milestone to Form
   const handleAddMilestone = () => {
@@ -448,6 +440,13 @@ export function ClientDashboard({ defaultTab = 'projects' }: ClientDashboardProp
       return;
     }
 
+    if (hasInsufficientBalance) {
+      toast.error(
+        `Insufficient ${formToken} balance. Fund your wallet with at least ${balanceShortfall.toLocaleString()} more ${formToken} before creating this escrow.`
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -604,50 +603,8 @@ export function ClientDashboard({ defaultTab = 'projects' }: ClientDashboardProp
             >
               Applicants ({selectedProjectForApplicants?.applicants?.length || 0})
             </button>
-            {address && isTestnetNetwork() && (
-              <button
-                type="button"
-                onClick={() => setShowFaucetModal(true)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  isLowBalance
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30'
-                    : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25'
-                }`}
-              >
-                <span>⛽</span>
-                <span>{isLowBalance ? 'Fund Testnet' : 'Faucet'}</span>
-              </button>
-            )}
           </div>
         </div>
-
-        {/* Low Testnet Balance Banner */}
-        {address && isTestnetNetwork() && isLowBalance && (
-          <div
-            data-testid="dashboard-low-balance-banner"
-            className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-          >
-            <div className="flex items-start gap-2.5 text-xs">
-              <span className="text-base leading-none">⚠️</span>
-              <div>
-                <p className="font-bold text-amber-300">
-                  Low Stellar Testnet Balance ({xlmBalance ?? 0} XLM
-                  {usdcBalance !== null ? ` • ${usdcBalance} USDC` : ''})
-                </p>
-                <p className="text-amber-200/80 mt-0.5">
-                  Fund your connected wallet with 10,000 test XLM &amp; 1,000 mock USDC via Friendbot to test Soroban escrows.
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowFaucetModal(true)}
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs rounded-xl shrink-0 transition-all cursor-pointer"
-            >
-              Open Friendbot Faucet
-            </button>
-          </div>
-        )}
 
         {/* VIEW 1: MY PROJECTS */}
         {activeTab === 'projects' && (
@@ -700,33 +657,60 @@ export function ClientDashboard({ defaultTab = 'projects' }: ClientDashboardProp
                         {proj.subtitle}
                       </p>
 
-                      {/* Milestone Progress Bar */}
-                      {proj.milestones && proj.milestones.length > 0 && (
-                        <div className="pt-2 max-w-md" onClick={(e) => e.stopPropagation()}>
-                          <MilestoneProgressBar
-                            milestones={proj.milestones}
-                            totalBudget={proj.budget}
-                            token={proj.token || 'USDC'}
-                            compact
-                          />
+                      {/* Attached Files & Image Thumbnails */}
+                      {((proj.attachments && proj.attachments.length > 0) || (proj.files && proj.files.length > 0)) && (
+                        <div className="pt-2 flex flex-wrap items-center gap-2">
+                          {(proj.files || proj.attachments || []).map((file: any, fIdx: number) => {
+                            const fileUrl = typeof file === 'string' ? file : (file.file_url || file.file_name);
+                            const fileName = typeof file === 'string' ? file : (file.file_name || 'Attachment');
+                            const isImage = typeof fileUrl === 'string' && (fileUrl.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i) || fileUrl.startsWith('data:image'));
+
+                            if (isImage) {
+                              return (
+                                <div
+                                  key={fIdx}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLightboxImage({ url: fileUrl, name: fileName });
+                                  }}
+                                  className="relative group/img cursor-pointer overflow-hidden rounded-lg border border-[#333338] hover:border-blue-500 transition-all shadow-sm"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={fileUrl}
+                                    alt={fileName}
+                                    className="w-12 h-12 object-cover transform group-hover/img:scale-110 transition-transform duration-200"
+                                  />
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 flex items-center justify-center text-white text-[9px] font-bold transition-opacity">
+                                    🔍 Zoom
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <span key={fIdx} className="text-[11px] bg-[#232326] text-[#e4e4e7] px-2 py-0.5 rounded border border-[#333338] font-mono">
+                                📄 {fileName}
+                              </span>
+                            );
+                          })}
                         </div>
                       )}
-
-                      {/* Attached Files & Deliverable Previews */}
-                      {((proj.attachments && proj.attachments.length > 0) || (proj.files && proj.files.length > 0)) && (() => {
-                        const deliverableItems = normalizeDeliverables(proj.files || proj.attachments || []);
-                        return deliverableItems.length > 0 ? (
-                          <div className="pt-2">
-                            <DeliverablePreview
-                              items={deliverableItems}
-                              onInspect={(idx) => setLightboxState({ items: deliverableItems, index: idx })}
-                            />
-                          </div>
-                        ) : null;
-                      })()}
                     </div>
 
                     <div className="self-start sm:self-center flex flex-col items-end gap-1.5">
+                      <button
+                        type="button"
+                        data-testid="client-audit-log-button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setAuditProject(proj);
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-[11px] font-bold text-indigo-300 transition-colors hover:bg-indigo-500/20"
+                      >
+                        <span aria-hidden="true">🔗</span> Audit Log
+                      </button>
+                      <CalendarExportButton project={proj} compact label="Calendar" />
                       {proj.project_id_onchain !== undefined && proj.project_id_onchain !== null && (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
                           <span>✦</span> Soroban Escrow #{proj.project_id_onchain.toString()}
@@ -746,6 +730,9 @@ export function ClientDashboard({ defaultTab = 'projects' }: ClientDashboardProp
                         <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-[#27272a] text-[#a1a1aa] border border-[#3f3f46]">
                           Completed
                         </span>
+                      )}
+                      {(proj.status === 'completed' || (proj.status as string) === 'Completed') && (
+                        <DownloadReceiptButton project={proj} />
                       )}
                     </div>
                   </div>
@@ -964,6 +951,15 @@ export function ClientDashboard({ defaultTab = 'projects' }: ClientDashboardProp
                 </div>
               </div>
 
+              <BalanceWarningBadge
+                address={address}
+                balance={walletBalance.balance}
+                budget={formBudget === '' ? 0 : formBudget}
+                token={formToken}
+                isLoading={walletBalance.loading}
+                error={walletBalance.error}
+              />
+
               {/* Visibility Radio Buttons */}
               <div className="space-y-2 pt-1">
                 <label className="block text-xs sm:text-sm font-semibold text-[#e4e4e7]">
@@ -1035,7 +1031,7 @@ export function ClientDashboard({ defaultTab = 'projects' }: ClientDashboardProp
                       value={formFreelancerAddress}
                       onChange={(e) => setFormFreelancerAddress(e.target.value)}
                       placeholder="G..."
-                      className="w-full bg-[#121212] border border-[#27272a] rounded-xl px-3.5 py-2 text-xs font-mono text-white focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-[#121212] border border-[#27272a] rounded-xl px-3.5 py-2 text-xs font-mono tracking-tight text-white focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                 )}
@@ -1198,10 +1194,7 @@ export function ClientDashboard({ defaultTab = 'projects' }: ClientDashboardProp
                             {/* Thumbnail preview or File icon */}
                             {isImage ? (
                               <div
-                                onClick={() => {
-                                  const items = normalizeDeliverables(formAttachments);
-                                  setLightboxState({ items, index: idx });
-                                }}
+                                onClick={() => setLightboxImage({ url: fileUrl, name: fileName })}
                                 className="relative w-9 h-9 rounded-lg overflow-hidden border border-[#3f3f46] shrink-0 cursor-pointer group/img bg-[#18181b]"
                               >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1314,13 +1307,24 @@ export function ClientDashboard({ defaultTab = 'projects' }: ClientDashboardProp
               </div>
 
               {/* Save Project Button */}
-              <div className="pt-6 border-t border-[#27272a] flex justify-end">
+              <div className="pt-6 border-t border-[#27272a] flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
+                {hasInsufficientBalance && (
+                  <p className="text-xs text-red-300 sm:text-right">
+                    Lock Funds &amp; Create Escrow is disabled until your {formToken} balance covers the budget.
+                  </p>
+                )}
                 <button
                   type="submit"
-                  disabled={isSubmitting}
-                  className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg shadow-blue-600/30 transition-all cursor-pointer disabled:opacity-50"
+                  disabled={isSubmitting || hasInsufficientBalance}
+                  aria-label="Lock Funds & Create Escrow"
+                  title={hasInsufficientBalance ? 'Insufficient wallet balance' : undefined}
+                  className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg shadow-blue-600/30 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isSubmitting ? 'Saving Project...' : 'Save & Publish Escrow Project 🚀'}
+                  {isSubmitting
+                    ? 'Saving Project...'
+                    : formLockImmediately
+                    ? 'Lock Funds & Create Escrow 🔒'
+                    : 'Save & Publish Escrow Project 🚀'}
                 </button>
               </div>
             </form>
@@ -1517,17 +1521,11 @@ export function ClientDashboard({ defaultTab = 'projects' }: ClientDashboardProp
         </div>
       )}
 
-      {/* Interactive Deliverable Lightbox Gallery Modal */}
+      {/* Image Lightbox Modal */}
       <ImageLightboxModal
-        items={lightboxState?.items}
-        initialIndex={lightboxState?.index ?? 0}
-        onClose={() => setLightboxState(null)}
-      />
-
-      {/* Testnet Friendbot Faucet & Gas Estimator Modal */}
-      <TestnetFaucetModal
-        isOpen={showFaucetModal}
-        onClose={() => setShowFaucetModal(false)}
+        imageUrl={lightboxImage?.url || null}
+        imageAlt={lightboxImage?.name}
+        onClose={() => setLightboxImage(null)}
       />
 
       {/* Project Direct Chat Modal */}
@@ -1540,6 +1538,26 @@ export function ClientDashboard({ defaultTab = 'projects' }: ClientDashboardProp
         receiverAddress={chatModalState.receiverAddress}
         recipientRoleLabel={chatModalState.recipientRoleLabel}
       />
+
+      {auditProject && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/80 p-3 backdrop-blur-md sm:p-6"
+          onClick={() => setAuditProject(null)}
+        >
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setAuditProject(null)}
+                className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-xs font-bold text-slate-300 hover:text-white"
+              >
+                Close Audit Log ✕
+              </button>
+            </div>
+            <ProjectAuditLog project={auditProject} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

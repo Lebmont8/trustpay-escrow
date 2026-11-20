@@ -8,10 +8,12 @@ import { authFetch } from '@/lib/api';
 
 import { Milestone, Project, Proposal } from '@/types';
 import { ImageLightboxModal } from './ImageLightboxModal';
-import { DeliverableItem, DeliverablePreview, normalizeDeliverables } from './DeliverablePreview';
-import { MilestoneProgressBar } from './MilestoneProgressBar';
+import { MilestoneSubmitModal } from './MilestoneSubmitModal';
 import { ProjectChatModal } from './ProjectChatModal';
 import { ProjectCardSkeletonList, ProposalSkeletonList } from '@/components/skeletons';
+import { DownloadReceiptButton } from '@/components/DownloadReceiptButton';
+import { ProjectFilterBar } from '@/components/ProjectFilterBar';
+import { CryptoId } from '@/components/ui/CryptoId';
 
 export function FreelancerDashboard() {
   const router = useRouter();
@@ -20,10 +22,7 @@ export function FreelancerDashboard() {
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
-  const [lightboxState, setLightboxState] = useState<{
-    items: DeliverableItem[];
-    index: number;
-  } | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; name?: string } | null>(null);
 
   // Chat Modal State
   const [chatModalState, setChatModalState] = useState<{
@@ -52,6 +51,9 @@ export function FreelancerDashboard() {
   // Selected project for Project Details Modal
   const [viewingProjectDetails, setViewingProjectDetails] = useState<Project | null>(null);
 
+  // Milestone submission modal state
+  const [submittingMilestone, setSubmittingMilestone] = useState<{ project: Project; milestone: Milestone } | null>(null);
+
   // Search and Category filters
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -67,6 +69,32 @@ export function FreelancerDashboard() {
     setProposalWalletAddress(address || '');
     setProposalCoverNote('');
     setProposalPortfolioUrl('');
+  };
+
+  // Opens the rich deliverable submission modal for an accepted proposal
+  const handleOpenSubmitModal = (prop: Proposal) => {
+    const targetProject = projects.find((p) => p.id === prop.project_id);
+    const project: Project = targetProject || {
+      id: prop.project_id,
+      title: prop.project_title || 'Freelance Project',
+      description: '',
+      category: 'General',
+      budget: prop.budget,
+      status: 'in_progress',
+      token: 'USDC',
+    };
+    const milestone: Milestone = (project.milestones || []).find(
+      (m) => m.status === 'pending' || m.status === 'in_revision' || m.status === 'submitted'
+    ) || {
+      id: `${prop.id}-milestone-0`,
+      project_id: prop.project_id,
+      milestone_index: 0,
+      title: 'Project Deliverable',
+      description: 'Final deliverable for this engagement',
+      amount: prop.budget,
+      status: 'pending',
+    };
+    setSubmittingMilestone({ project, milestone });
   };
 
   // Helper to render action button or status badge for a project
@@ -98,6 +126,7 @@ export function FreelancerDashboard() {
             >
               <span>💬 Chat with Client</span>
             </button>
+            <DownloadReceiptButton project={proj} />
             <span className={isModal 
               ? "px-5 py-2.5 bg-[#052e16] text-[#22c55e] border border-[#14532d] text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md"
               : "px-3.5 py-1.5 bg-[#052e16] text-[#22c55e] border border-[#14532d] text-xs font-bold rounded-xl flex items-center gap-1"
@@ -397,26 +426,12 @@ export function FreelancerDashboard() {
               </div>
 
               {/* Search & Category Filter */}
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="Search projects..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full sm:w-auto px-3 py-1.5 bg-[#232326] border border-[#333338] rounded-xl text-white text-xs placeholder-[#71717a] focus:outline-none focus:border-indigo-500"
-                />
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="w-full sm:w-auto px-3 py-1.5 bg-[#232326] border border-[#333338] rounded-xl text-white text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
-                >
-                  <option value="All">All Categories</option>
-                  <option value="Development">Development</option>
-                  <option value="Design">Design</option>
-                  <option value="Writing">Writing</option>
-                  <option value="Marketing">Marketing</option>
-                </select>
-              </div>
+              <ProjectFilterBar
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                selectedCategory={selectedCategory}
+                onCategoryChange={setSelectedCategory}
+              />
             </div>
 
             {/* Project List */}
@@ -469,42 +484,71 @@ export function FreelancerDashboard() {
                       {proj.description}
                     </p>
 
-                    {/* Milestones progress & list preview */}
+                    {/* Milestones list preview */}
                     {proj.milestones && proj.milestones.length > 0 && (
-                      <div className="pt-3 border-t border-[#27272a]/60 space-y-2.5" onClick={(e) => e.stopPropagation()}>
-                        <MilestoneProgressBar
-                          milestones={proj.milestones}
-                          totalBudget={proj.budget}
-                          token={proj.token || 'USDC'}
-                          compact
-                        />
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-[11px] font-semibold text-[#71717a]">Milestones ({proj.milestones.length}):</span>
-                          {proj.milestones.map((m, idx) => (
-                            <span
-                              key={m.id || idx}
-                              className="text-[11px] bg-[#232326] text-[#e4e4e7] px-2.5 py-0.5 rounded-md border border-[#333338]"
-                            >
-                              {idx + 1}. {m.title} ({m.amount} {proj.token || 'USDC'})
-                            </span>
-                          ))}
-                        </div>
+                      <div className="pt-3 border-t border-[#27272a]/60 flex flex-wrap items-center gap-2">
+                        <span className="text-[11px] font-semibold text-[#71717a]">Milestones ({proj.milestones.length}):</span>
+                        {proj.milestones.map((m, idx) => (
+                          <span
+                            key={m.id || idx}
+                            className="text-[11px] bg-[#232326] text-[#e4e4e7] px-2.5 py-0.5 rounded-md border border-[#333338]"
+                          >
+                            {idx + 1}. {m.title} ({m.amount} {proj.token || 'USDC'})
+                          </span>
+                        ))}
                       </div>
                     )}
 
-                    {/* Files & Deliverable Previews */}
-                    {((proj.attachments && proj.attachments.length > 0) || (proj.files && proj.files.length > 0)) && (() => {
-                      const deliverableItems = normalizeDeliverables(proj.files || proj.attachments || []);
-                      return deliverableItems.length > 0 ? (
-                        <div className="pt-3 border-t border-[#27272a]/60 space-y-2">
-                          <span className="text-[11px] font-semibold text-[#71717a] block">Project Files & Attachments:</span>
-                          <DeliverablePreview
-                            items={deliverableItems}
-                            onInspect={(idx) => setLightboxState({ items: deliverableItems, index: idx })}
-                          />
+                    {/* Files & Image Attachments */}
+                    {((proj.attachments && proj.attachments.length > 0) || (proj.files && proj.files.length > 0)) && (
+                      <div className="pt-3 border-t border-[#27272a]/60 space-y-2">
+                        <span className="text-[11px] font-semibold text-[#71717a] block">Project Files & Attachments:</span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {(proj.files || proj.attachments || []).map((file: any, fIdx: number) => {
+                            const fileUrl = typeof file === 'string' ? file : (file.file_url || file.file_name);
+                            const fileName = typeof file === 'string' ? file : (file.file_name || 'File Attachment');
+                            const isImage = typeof fileUrl === 'string' && (fileUrl.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i) || fileUrl.startsWith('data:image'));
+
+                            if (isImage) {
+                              return (
+                                <div
+                                  key={fIdx}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLightboxImage({ url: fileUrl, name: fileName });
+                                  }}
+                                  className="relative group/img cursor-pointer overflow-hidden rounded-xl border border-[#333338] hover:border-indigo-500 transition-all shadow-md"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={fileUrl}
+                                    alt={fileName}
+                                    className="w-14 h-14 object-cover transform group-hover/img:scale-110 transition-transform duration-200"
+                                  />
+                                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/img:opacity-100 flex items-center justify-center text-white text-[10px] font-bold transition-opacity">
+                                    🔍 Zoom
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <a
+                                key={fIdx}
+                                href={fileUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-[#232326] hover:bg-[#27272a] text-[#e4e4e7] text-xs rounded-xl border border-[#333338] transition-colors"
+                              >
+                                <span>📄</span>
+                                <span className="truncate max-w-[140px]">{fileName}</span>
+                              </a>
+                            );
+                          })}
                         </div>
-                      ) : null;
-                    })()}
+                      </div>
+                    )}
                   </div>
                 ))}
 
@@ -599,9 +643,10 @@ export function FreelancerDashboard() {
                       {prop.stellar_address && (
                         <div className="text-xs text-[#a1a1aa] flex items-center space-x-1.5">
                           <span className="text-[#71717a]">Wallet:</span>
-                          <span className="font-mono text-[#e4e4e7] bg-[#232326] px-2 py-0.5 rounded text-[11px] border border-[#333338]">
-                            {prop.stellar_address}
-                          </span>
+                          <CryptoId
+                            value={prop.stellar_address}
+                            className="text-[#e4e4e7] bg-[#232326] px-2 py-0.5 rounded border border-[#333338] break-all"
+                          />
                         </div>
                       )}
 
@@ -653,6 +698,25 @@ export function FreelancerDashboard() {
                           >
                             <span>💬 Chat with Client</span>
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSubmitModal(prop)}
+                            className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md transition-all active:scale-95"
+                          >
+                            Submit Deliverable
+                          </button>
+                          <DownloadReceiptButton
+                            project={projects.find((p) => p.id === prop.project_id) || {
+                              id: prop.project_id,
+                              title: prop.project_title || 'Freelance Project',
+                              description: '',
+                              category: 'General',
+                              budget: prop.budget,
+                              status: 'in_progress',
+                              token: 'USDC',
+                            }}
+                            proposal={prop}
+                          />
                           <span className="px-3 py-1 bg-[#052e16] text-[#22c55e] border border-[#14532d] text-xs font-semibold rounded-full">
                             Granted ✓
                           </span>
@@ -799,10 +863,7 @@ export function FreelancerDashboard() {
                       return (
                         <div
                           key={fIdx}
-                          onClick={() => {
-                            const items = normalizeDeliverables(viewingProjectDetails.files || viewingProjectDetails.attachments || []);
-                            setLightboxState({ items, index: fIdx });
-                          }}
+                          onClick={() => setLightboxImage({ url: fileUrl, name: fileName })}
                           className="relative group/img cursor-pointer overflow-hidden rounded-xl border border-[#333338] hover:border-indigo-500 transition-all shadow-md"
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -882,7 +943,7 @@ export function FreelancerDashboard() {
                   placeholder="e.g. GAUBK... (Your Stellar Public Key)"
                   disabled
                   readOnly
-                  className="w-full px-3.5 py-2.5 bg-[#1c1c20] border border-[#27272a] rounded-xl text-[#a1a1aa] font-mono text-xs cursor-not-allowed opacity-80 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 bg-[#1c1c20] border border-[#27272a] rounded-xl text-[#a1a1aa] font-mono tracking-tight text-xs cursor-not-allowed opacity-80 focus:outline-none"
                   required
                 />
                 {address && (
@@ -948,11 +1009,11 @@ export function FreelancerDashboard() {
         </div>
       )}
 
-      {/* Interactive Deliverable Lightbox Modal */}
+      {/* Image Lightbox Modal */}
       <ImageLightboxModal
-        items={lightboxState?.items}
-        initialIndex={lightboxState?.index ?? 0}
-        onClose={() => setLightboxState(null)}
+        imageUrl={lightboxImage?.url || null}
+        imageAlt={lightboxImage?.name}
+        onClose={() => setLightboxImage(null)}
       />
 
       {/* Project Direct Chat Modal */}
@@ -965,6 +1026,21 @@ export function FreelancerDashboard() {
         receiverAddress={chatModalState.receiverAddress}
         recipientRoleLabel={chatModalState.recipientRoleLabel}
       />
+
+      {/* Rich Milestone Deliverable Submission Modal */}
+      {submittingMilestone && (
+        <MilestoneSubmitModal
+          isOpen={Boolean(submittingMilestone)}
+          onClose={() => setSubmittingMilestone(null)}
+          project={submittingMilestone.project}
+          milestone={submittingMilestone.milestone}
+          onSubmitted={() => {
+            setSubmittingMilestone(null);
+            fetchBackendProjects();
+            fetchMyProposals();
+          }}
+        />
+      )}
     </div>
   );
 }
