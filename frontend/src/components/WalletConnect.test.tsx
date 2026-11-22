@@ -263,3 +263,38 @@ describe("WalletConnect address copy tooltip", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+
+it("does not reopen an Escape-dismissed tooltip when a pending clipboard write resolves", async () => {
+  let resolveCopy!: () => void;
+  vi.mocked(navigator.clipboard.writeText).mockReturnValue(
+    new Promise<void>((resolve) => { resolveCopy = resolve; })
+  );
+  const { button } = renderWallet();
+  fireEvent.mouseEnter(button.parentElement!);
+  fireEvent.click(button);
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+  await act(async () => { resolveCopy(); });
+
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+});
+
+it("does not restore a previous wallet's pending copy after switching away and back", async () => {
+  let resolveCopy!: () => void;
+  vi.mocked(navigator.clipboard.writeText).mockReturnValue(
+    new Promise<void>((resolve) => { resolveCopy = resolve; })
+  );
+  const { button, rerender } = renderWallet();
+  fireEvent.mouseEnter(button.parentElement!);
+  fireEvent.click(button);
+  mocks.wallet.address = "G" + "B".repeat(55);
+  rerender(<WalletConnect />);
+
+  await act(async () => { resolveCopy(); });
+  mocks.wallet.address = address;
+  rerender(<WalletConnect />);
+
+  expect(button).not.toHaveTextContent("Copied!");
+});

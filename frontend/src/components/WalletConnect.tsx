@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useId, useRef } from "react";
+import { useState, useEffect, useId, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { isConnected, requestAccess, getNetworkDetails, setAllowed, signTransaction } from "@stellar/freighter-api";
 import { toast } from "sonner";
@@ -57,21 +57,27 @@ export default function WalletConnect() {
   const copyAttempt = useRef(0);
   const showAddressTooltip = (addressHovered || addressFocused) && !tooltipDismissed;
 
-  useEffect(() => {
-    return () => {
-      if (copyResetTimer.current !== null) clearTimeout(copyResetTimer.current);
-    };
+  const resetCopyFeedback = useCallback(() => {
+    copyAttempt.current++;
+    if (copyResetTimer.current !== null) clearTimeout(copyResetTimer.current);
+    setCopiedAddress(null);
   }, []);
+
+  // Invalidate pending writes and feedback whenever this wallet lifetime ends.
+  useEffect(() => resetCopyFeedback, [address, resetCopyFeedback]);
 
   useEffect(() => {
     if (!showAddressTooltip) return;
 
     const dismissTooltip = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setTooltipDismissed(true);
+      if (event.key === "Escape") {
+        resetCopyFeedback();
+        setTooltipDismissed(true);
+      }
     };
     document.addEventListener("keydown", dismissTooltip);
     return () => document.removeEventListener("keydown", dismissTooltip);
-  }, [showAddressTooltip]);
+  }, [showAddressTooltip, resetCopyFeedback]);
   const [mounted, setMounted] = useState(false);
   const router = useRouter();
 
@@ -356,12 +362,6 @@ export default function WalletConnect() {
     } finally {
       setIsConnecting(false);
     }
-  };
-
-  const resetCopyFeedback = () => {
-    copyAttempt.current++;
-    if (copyResetTimer.current !== null) clearTimeout(copyResetTimer.current);
-    setCopiedAddress(null);
   };
 
   const copyAddress = async () => {
