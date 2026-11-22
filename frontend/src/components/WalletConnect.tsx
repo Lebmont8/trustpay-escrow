@@ -563,8 +563,26 @@ export default function WalletConnect() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2 bg-[#18181b] px-3.5 py-2 rounded-xl border border-[#3f3f46] w-full justify-between">
-            <CryptoId value={address} head={8} tail={8} className="text-white truncate" />
+          <div
+            className="relative w-full"
+            onMouseEnter={() => {
+              setAddressHovered(true);
+              setTooltipDismissed(false);
+            }}
+            onMouseLeave={() => {
+              setAddressHovered(false);
+              resetCopyFeedback();
+            }}
+            onPointerDown={() => setAddressFocused(false)}
+            onFocus={(event) => {
+              setAddressFocused(event.target.matches(":focus-visible"));
+              setTooltipDismissed(false);
+            }}
+            onBlur={() => {
+              setAddressFocused(false);
+              resetCopyFeedback();
+            }}
+          >
             <button
               type="button"
               onClick={copyAddress}
@@ -572,9 +590,7 @@ export default function WalletConnect() {
               aria-describedby={showAddressTooltip ? addressTooltipId : undefined}
               className="flex min-h-10 w-full items-center justify-between gap-2 rounded-xl border border-[#3f3f46] bg-[#18181b] px-3.5 py-2 text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
             >
-              <span className="truncate font-mono text-xs tracking-wide text-white">
-                {address.slice(0, 8)}...{address.slice(-8)}
-              </span>
+              <CryptoId value={address} head={8} tail={8} className="text-white truncate" />
               <span className="flex shrink-0 items-center gap-1 rounded-md bg-[#27272a] px-2 py-1 text-xs text-[#a1a1aa]">
                 <svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor" className="h-3.5 w-3.5">
                   <rect x="8" y="8" width="12" height="12" rx="2" />
