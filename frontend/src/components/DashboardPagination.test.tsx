@@ -3,8 +3,12 @@ import { fireEvent, render, screen, waitFor, act } from '@testing-library/react'
 import { ClientDashboard } from './ClientDashboard';
 import { FreelancerDashboard } from './FreelancerDashboard';
 
-const wallet = vi.hoisted(() => ({ address: 'GCLIENT' }));
-vi.mock('@/store/walletStore', () => ({ useWalletStore: () => wallet }));
+const wallet = vi.hoisted(() => ({ address: 'GCLIENT', activeAddress: null as string | null }));
+vi.mock('@/store/walletStore', () => ({
+  useWalletStore: () => wallet,
+  useActiveWalletAddress: () => wallet.activeAddress ?? wallet.address,
+  canSubmitProposal: () => ({ allowed: true }),
+}));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('@/lib/api', () => ({ authFetch: (...args: Parameters<typeof fetch>) => fetch(...args) }));
 vi.mock('@/hooks/useCreateProjectForm', () => ({
@@ -36,6 +40,7 @@ function response(url: string) {
 beforeEach(() => {
   total = 48;
   wallet.address = 'GCLIENT';
+  wallet.activeAddress = null;
   vi.stubGlobal('fetch', vi.fn(async (input) => response(String(input))));
   vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   Element.prototype.scrollIntoView = vi.fn();
@@ -92,3 +97,17 @@ describe.each([['client', ClientDashboard], ['freelancer', FreelancerDashboard]]
     });
   },
 );
+
+
+it('resets client pagination and scopes requests when the active wallet changes', async () => {
+  wallet.activeAddress = 'GORG1';
+  const { rerender } = render(<ClientDashboard />);
+  await screen.findByText('Showing 1-10 of 48 projects');
+  expect(fetch).toHaveBeenCalledWith(expect.stringContaining('client_address=GORG1'));
+  fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
+  await screen.findByText('Showing 11-20 of 48 projects');
+  wallet.activeAddress = 'GORG2';
+  rerender(<ClientDashboard />);
+  await screen.findByText('Showing 1-10 of 48 projects');
+  expect(fetch).toHaveBeenLastCalledWith(expect.stringContaining('page=1&limit=10&client_address=GORG2'));
+});
