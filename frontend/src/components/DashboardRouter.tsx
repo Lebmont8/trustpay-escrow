@@ -1,14 +1,19 @@
 'use client';
 
 import React from 'react';
-import { useWalletStore } from '@/store/walletStore';
+import { useWalletStore, useActiveWalletAddress } from '@/store/walletStore';
 import { ClientDashboard } from './ClientDashboard';
 import { FreelancerDashboard } from './FreelancerDashboard';
 import WalletConnect, { WalletAddressCopy } from './WalletConnect';
+import { ArbiterDashboard } from './ArbiterDashboard';
+import { RoleSwitcher } from './RoleSwitcher';
+import Link from 'next/link';
+import { OrgWalletSwitcher } from './OrgWalletSwitcher';
 import NotificationBell from './NotificationBell';
 
 export function DashboardRouter() {
-  const { address, activeRole, setActiveRole, disconnect } = useWalletStore();
+  const { address, activeRole, disconnect } = useWalletStore();
+  const activeWalletAddress = useActiveWalletAddress() || address;
 
   // AUTH GUARD: If user has not connected wallet, block dashboard and require wallet connect
   if (!address) {
@@ -40,6 +45,8 @@ export function DashboardRouter() {
     );
   }
 
+  const displayedAddress = activeWalletAddress || address;
+
   return (
     <div className="min-h-screen bg-[#121212] text-white">
       {/* Top Global Capability Switcher Bar */}
@@ -48,7 +55,7 @@ export function DashboardRouter() {
           <span className="font-extrabold text-blue-500 tracking-wider">TRUSTPAY ESCROW</span>
           <span className="text-[#52525b]">|</span>
           <span className="text-[#a1a1aa]">Wallet:</span>
-          <WalletAddressCopy key={address} address={address} header />
+          <WalletAddressCopy key={displayedAddress} address={displayedAddress} header />
           <button
             onClick={disconnect}
             className="text-[11px] text-[#71717a] hover:text-red-400 font-semibold underline transition-colors ml-2"
@@ -59,38 +66,21 @@ export function DashboardRouter() {
 
         {/* Right Section: Notification Bell & Mode Switcher */}
         <div className="flex items-center space-x-4">
+          <Link href="/analytics" className="text-blue-400 hover:underline">Analytics</Link>
+          <OrgWalletSwitcher />
           <NotificationBell />
 
           <div className="flex items-center space-x-2">
             <span className="text-[#a1a1aa] font-medium text-xs">Viewing as:</span>
-            <div className="flex items-center space-x-1 bg-[#232326] p-1 rounded-xl border border-[#333338]">
-              <button
-                onClick={() => setActiveRole('client')}
-                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center space-x-1 ${
-                  activeRole === 'client'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'text-[#a1a1aa] hover:text-white hover:bg-[#27272a]'
-                }`}
-              >
-                <span>👤 Client</span>
-              </button>
-              <button
-                onClick={() => setActiveRole('freelancer')}
-                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center space-x-1 ${
-                  activeRole === 'freelancer'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-[#a1a1aa] hover:text-white hover:bg-[#27272a]'
-                }`}
-              >
-                <span>💼 Freelancer</span>
-              </button>
-            </div>
+            <RoleSwitcher />
           </div>
         </div>
       </div>
 
       {/* Render Active View matching Capability */}
-      {activeRole === 'client' ? <ClientDashboard /> : <FreelancerDashboard />}
+      {activeRole === 'client' && <ClientDashboard />}
+      {activeRole === 'freelancer' && <FreelancerDashboard />}
+      {activeRole === 'arbiter' && <ArbiterDashboard />}
     </div>
   );
 }

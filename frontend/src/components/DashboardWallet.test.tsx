@@ -5,13 +5,17 @@ import { DashboardRouter } from './DashboardRouter';
 const wallet = vi.hoisted(() => ({
   address: ('G' + 'A'.repeat(55)) as string | null,
   activeRole: 'client',
+  activeAddress: null as string | null,
   walletName: 'Freighter',
   setActiveRole: vi.fn(),
   setWalletInfo: vi.fn(),
   disconnect: vi.fn(),
 }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }));
-vi.mock('@/store/walletStore', () => ({ useWalletStore: () => wallet }));
+vi.mock('@/store/walletStore', () => ({ useWalletStore: () => wallet, useActiveWalletAddress: () => wallet.activeAddress || wallet.address }));
+vi.mock('./RoleSwitcher', () => ({ RoleSwitcher: () => <span>Role switcher</span> }));
+vi.mock('./OrgWalletSwitcher', () => ({ OrgWalletSwitcher: () => <span>Organisation wallets</span> }));
+vi.mock('./ArbiterDashboard', () => ({ ArbiterDashboard: () => <main>Arbiter projects</main> }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('./ClientDashboard', () => ({ ClientDashboard: () => <main>Client projects</main> }));
 vi.mock('./FreelancerDashboard', () => ({ FreelancerDashboard: () => <main>Freelancer projects</main> }));
@@ -24,6 +28,7 @@ const copyButton = () => screen.getByRole('button', { name: 'Copy full Stellar a
 beforeEach(() => {
   vi.clearAllMocks();
   wallet.address = address;
+  wallet.activeAddress = null;
   wallet.activeRole = 'client';
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
@@ -33,7 +38,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('connected wallet in the real dashboard header', () => {
-  it.each(['client', 'freelancer'])('shows the copy affordance and hover tooltip for %s', role => {
+  it.each(['client', 'freelancer', 'arbiter'])('shows the copy affordance and hover tooltip for %s', role => {
     wallet.activeRole = role;
     render(<DashboardRouter />);
     const button = copyButton();
@@ -117,6 +122,17 @@ describe('connected wallet in the real dashboard header', () => {
     fireEvent.mouseEnter(copyButton());
     expect(screen.getByRole('tooltip')).toHaveTextContent('Click to copy full Stellar address');
     expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it('copies the active organisation wallet instead of the primary login wallet', async () => {
+    wallet.activeAddress = 'G' + 'C'.repeat(55);
+    const view = render(<DashboardRouter />);
+    await act(async () => { fireEvent.click(copyButton()); });
+    expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith(wallet.activeAddress);
+    wallet.activeAddress = 'G' + 'D'.repeat(55);
+    view.rerender(<DashboardRouter />);
+    await act(async () => { fireEvent.click(copyButton()); });
+    expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith(wallet.activeAddress);
   });
 
   it('removes the header copy control after disconnect', () => {
